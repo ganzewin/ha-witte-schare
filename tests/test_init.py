@@ -58,3 +58,14 @@ async def test_entities(hass: HomeAssistant, setup) -> None:
     assert hass.states.get("sensor.afhangbord_current_activity_end").state == "2026-11-05T21:00:00+00:00"
     cal = hass.states.get("calendar.afhangbord_activity")
     assert cal.state == "on"
+
+
+async def test_options_flow(hass: HomeAssistant, setup) -> None:
+    result = await hass.config_entries.options.async_init(setup.entry_id)
+    schema = result["data_schema"].schema
+    keys = {str(k): v for k, v in schema.items()}
+    assert keys["days_ahead"].config["mode"] == "box"
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"lookahead_minutes": 60.0, "days_ahead": 3.0}
+    )
+    assert setup.options == {"lookahead_minutes": 60, "days_ahead": 3}

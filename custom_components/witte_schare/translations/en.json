@@ -22,6 +22,10 @@
         "data": {
           "lookahead_minutes": "Lookahead (minutes)",
           "days_ahead": "Days to fetch ahead"
+        },
+        "data_description": {
+          "lookahead_minutes": "How far ahead \"upcoming\" sensors look, in minutes (0-480).",
+          "days_ahead": "Number of days after today to fetch from the board (0-14)."
         }
       }
     }
