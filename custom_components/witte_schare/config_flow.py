@@ -10,6 +10,11 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+)
 from homeassistant.util import dt as dt_util
 
 from .api import ClubSiteClient, ClubSiteError
@@ -68,7 +73,7 @@ class WitteSchareOptionsFlow(OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            return self.async_create_entry(data={k: int(v) for k, v in user_input.items()})
         options = self.config_entry.options
         return self.async_show_form(
             step_id="init",
@@ -76,10 +81,20 @@ class WitteSchareOptionsFlow(OptionsFlow):
                 {
                     vol.Required(
                         CONF_LOOKAHEAD, default=options.get(CONF_LOOKAHEAD, DEFAULT_LOOKAHEAD)
-                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=480)),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0, max=480, step=5, mode=NumberSelectorMode.BOX,
+                            unit_of_measurement="min",
+                        )
+                    ),
                     vol.Required(
                         CONF_DAYS_AHEAD, default=options.get(CONF_DAYS_AHEAD, DEFAULT_DAYS_AHEAD)
-                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=14)),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0, max=14, step=1, mode=NumberSelectorMode.BOX,
+                            unit_of_measurement="d",
+                        )
+                    ),
                 }
             ),
         )

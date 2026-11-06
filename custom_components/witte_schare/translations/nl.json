@@ -22,6 +22,10 @@
         "data": {
           "lookahead_minutes": "Minuten vooruitkijken",
           "days_ahead": "Dagen vooruit ophalen"
+        },
+        "data_description": {
+          "lookahead_minutes": "Hoe ver de \"binnenkort\"-sensoren vooruitkijken, in minuten (0-480).",
+          "days_ahead": "Aantal dagen na vandaag dat van het bord wordt opgehaald (0-14)."
         }
       }
     }
