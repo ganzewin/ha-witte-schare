@@ -1,0 +1,79 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "De Witte Schare",
+        "description": "Adres van de clubsite (KNLTB.Club).",
+        "data": {
+          "base_url": "Clubsite"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Afhangbord niet bereikbaar of niet te lezen."
+    },
+    "abort": {
+      "already_configured": "Deze clubsite is al ingesteld."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "lookahead_minutes": "Minuten vooruitkijken",
+          "days_ahead": "Dagen vooruit ophalen"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "courts_in_use": {
+        "name": "Banen bezet"
+      },
+      "tennis_courts_in_use": {
+        "name": "Tennisbanen bezet"
+      },
+      "padel_courts_in_use": {
+        "name": "Padelbanen bezet"
+      },
+      "players_now": {
+        "name": "Spelers nu"
+      },
+      "courts_in_use_upcoming": {
+        "name": "Banen bezet komende periode"
+      },
+      "bookings_today": {
+        "name": "Reserveringen vandaag"
+      },
+      "first_booking_today": {
+        "name": "Eerste reservering vandaag"
+      },
+      "last_booking_end_today": {
+        "name": "Laatste eindtijd vandaag"
+      },
+      "next_activity_start": {
+        "name": "Volgende activiteit"
+      },
+      "current_activity_end": {
+        "name": "Einde huidige activiteit"
+      }
+    },
+    "binary_sensor": {
+      "activity_now": {
+        "name": "Activiteit nu"
+      },
+      "activity_upcoming": {
+        "name": "Activiteit binnenkort"
+      }
+    },
+    "calendar": {
+      "bookings": {
+        "name": "Reserveringen"
+      },
+      "activity": {
+        "name": "Activiteit"
+      }
+    }
+  }
+}

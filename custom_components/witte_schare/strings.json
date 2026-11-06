@@ -1,0 +1,79 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "De Witte Schare",
+        "description": "Club website address (KNLTB.Club).",
+        "data": {
+          "base_url": "Club site"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not read the court booking board."
+    },
+    "abort": {
+      "already_configured": "This club site is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "lookahead_minutes": "Lookahead (minutes)",
+          "days_ahead": "Days to fetch ahead"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "courts_in_use": {
+        "name": "Courts in use"
+      },
+      "tennis_courts_in_use": {
+        "name": "Tennis courts in use"
+      },
+      "padel_courts_in_use": {
+        "name": "Padel courts in use"
+      },
+      "players_now": {
+        "name": "Players now"
+      },
+      "courts_in_use_upcoming": {
+        "name": "Courts in use upcoming"
+      },
+      "bookings_today": {
+        "name": "Bookings today"
+      },
+      "first_booking_today": {
+        "name": "First booking today"
+      },
+      "last_booking_end_today": {
+        "name": "Last booking end today"
+      },
+      "next_activity_start": {
+        "name": "Next activity"
+      },
+      "current_activity_end": {
+        "name": "Current activity end"
+      }
+    },
+    "binary_sensor": {
+      "activity_now": {
+        "name": "Activity now"
+      },
+      "activity_upcoming": {
+        "name": "Activity upcoming"
+      }
+    },
+    "calendar": {
+      "bookings": {
+        "name": "Bookings"
+      },
+      "activity": {
+        "name": "Activity"
+      }
+    }
+  }
+}

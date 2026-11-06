@@ -1,0 +1,12 @@
+{
+  "domain": "witte_schare",
+  "name": "De Witte Schare",
+  "codeowners": ["@ganzewin"],
+  "config_flow": true,
+  "documentation": "https://github.com/ganzewin/ha-witte-schare",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/ganzewin/ha-witte-schare/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
