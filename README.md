@@ -57,7 +57,7 @@ automation:
     triggers:
       - trigger: calendar
         event: start
-        entity_id: calendar.afhangbord_activiteit
+        entity_id: calendar.afhangbord_activiteit  # controleer de echte entity_id in HA
         offset: "-01:00:00"
     actions:
       - action: climate.set_temperature
