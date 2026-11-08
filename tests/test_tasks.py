@@ -51,6 +51,7 @@ async def test_setup_with_login(hass: HomeAssistant, aioclient_mock, freezer) ->
     from pathlib import Path
     empty = (Path(__file__).parent / "fixtures" / "bookings_empty.html").read_text()
     aioclient_mock.get(re.compile(r".*/courtbooking-overview/GetBookings.*"), text=empty.replace('value="7-11-2026', 'value="x'))
+    aioclient_mock.get("https://www.witteschare.nl/mijn", text='<input name="Login.Password">')
     aioclient_mock.post("https://www.witteschare.nl/mijn", text="<html>Uitloggen</html>")
     aioclient_mock.post(
         "https://www.witteschare.nl/Ajax/Calendar/GetEvents",
@@ -78,6 +79,7 @@ async def test_login_rejected_keeps_board(hass: HomeAssistant, aioclient_mock, f
     from pathlib import Path
     empty = (Path(__file__).parent / "fixtures" / "bookings_empty.html").read_text()
     aioclient_mock.get(re.compile(r".*/courtbooking-overview/GetBookings.*"), text=empty)
+    aioclient_mock.get("https://www.witteschare.nl/mijn", text='<input name="Login.Password">')
     aioclient_mock.post("https://www.witteschare.nl/mijn", text='<input name="Login.Password">')
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -91,3 +93,16 @@ async def test_login_rejected_keeps_board(hass: HomeAssistant, aioclient_mock, f
     src = hass.states.get("sensor.diensten_duties_source")
     assert src.state == "fout"
     assert "niet geaccepteerd" in src.attributes["laatste_fout"]
+
+
+async def test_login_sends_login_type(hass: HomeAssistant, aioclient_mock) -> None:
+    from homeassistant.helpers.aiohttp_client import async_get_clientsession
+    from custom_components.witte_schare.api import MemberClient
+
+    aioclient_mock.get("https://www.witteschare.nl/mijn", text="form")
+    aioclient_mock.post("https://www.witteschare.nl/mijn", text="<a>Uitloggen</a>")
+    client = MemberClient(async_get_clientsession(hass), "https://www.witteschare.nl", "123", "pw")
+    await client.login()
+    method, url, data, _ = aioclient_mock.mock_calls[-1]
+    assert data["Login.LoginType"] == "FedmembershipNumber"
+    assert data["Login.MembershipNumber"] == "123"

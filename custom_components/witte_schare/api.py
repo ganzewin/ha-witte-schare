@@ -56,6 +56,11 @@ class ClubSiteClient:
             raise ClubSiteError(f"Afhangbord niet te lezen: {err}") from err
 
 
+def _logged_in(page: str) -> bool:
+    """A logged-in page has a logout link and no login form."""
+    return 'name="Login.Password"' not in page and "Uitloggen" in page
+
+
 class LoginError(ClubSiteError):
     """Membership number or password rejected."""
 
@@ -81,23 +86,37 @@ class MemberClient:
         return {"User-Agent": USER_AGENT}
 
     async def login(self) -> None:
-        """Post the login form; the site sets a session cookie."""
+        """Post the login form; the site sets a session cookie.
+
+        The form has a "login with" choice (bondsnummer or clublidnummer);
+        try the bondsnummer first and fall back to the clublidnummer.
+        """
         url = f"{self._base_url}{LOGIN_PATH}"
+        timeout = aiohttp.ClientTimeout(total=20)
         try:
-            async with self._session.post(
-                url,
-                data={"Login.MembershipNumber": self._number, "Login.Password": self._password},
-                headers=self._headers,
-                timeout=aiohttp.ClientTimeout(total=20),
-            ) as resp:
-                resp.raise_for_status()
-                page = await resp.text()
+            # Pick up the session cookies the form expects.
+            async with self._session.get(url, headers=self._headers, timeout=timeout) as resp:
+                await resp.read()
+            for login_type in ("FedmembershipNumber", "ClubmembershipNumber"):
+                async with self._session.post(
+                    url,
+                    data={
+                        "Login.LoginType": login_type,
+                        "Login.MembershipNumber": self._number,
+                        "Login.Password": self._password,
+                    },
+                    headers=self._headers,
+                    timeout=timeout,
+                ) as resp:
+                    resp.raise_for_status()
+                    page = await resp.text()
+                if _logged_in(page):
+                    self._logged_in = True
+                    return
         except (aiohttp.ClientError, TimeoutError) as err:
             raise ClubSiteError(f"Inloggen mislukt: {err}") from err
-        if 'name="Login.Password"' in page:
-            self._logged_in = False
-            raise LoginError("Bondsnummer of wachtwoord niet geaccepteerd")
-        self._logged_in = True
+        self._logged_in = False
+        raise LoginError("Bondsnummer of wachtwoord niet geaccepteerd")
 
     async def _post_events(self, start: date, end: date) -> tuple[int, str, str]:
         url = f"{self._base_url}{EVENTS_PATH}"
