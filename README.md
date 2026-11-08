@@ -78,6 +78,23 @@ De parser (`custom_components/witte_schare/parser.py`) heeft geen afhankelijkhei
 van Home Assistant. Als LISA de site aanpast, sla de nieuwe pagina op in
 `tests/fixtures/` en pas de parser aan.
 
-## Gepland
+## Bardiensten en clubagenda (optioneel, met inlog)
 
-* Bardiensten (vereist inloggen op de clubsite).
+Vul bij *Configureren* je bondsnummer en het wachtwoord van Mijn Club in.
+De integratie logt dan in op de clubsite en haalt elk half uur de komende
+vier weken op uit `Mijn Club > Diensten` (`/Ajax/Calendar/GetEvents`).
+Het wachtwoord wordt alleen in Home Assistant opgeslagen. Bondsnummer leeg
+maken zet het weer uit.
+
+Extra apparaat **Diensten**:
+
+| Entiteit | Wat |
+|---|---|
+| Agenda *Bardiensten* | elke dienst met "(open)" of "(bezet)", zonder namen |
+| Agenda *Clubagenda* | clubactiviteiten uit dezelfde kalender |
+| Open diensten komende 7 dagen | aantal, met lijst |
+| Volgende open dienst | tijdstempel |
+| Diensten bron (diagnose) | aantal opgehaalde items, laatste fout en een voorbeeld van de ruwe velden (namen gemaskeerd) |
+
+Open/bezet wordt nu bepaald aan de kleur die de site gebruikt (groen =
+beschikbaar, grijs = bezet).

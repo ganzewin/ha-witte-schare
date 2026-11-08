@@ -21,13 +21,21 @@
       "init": {
         "data": {
           "lookahead_minutes": "Minuten vooruitkijken",
-          "days_ahead": "Dagen vooruit ophalen"
+          "days_ahead": "Dagen vooruit ophalen",
+          "membership_number": "Bondsnummer (optioneel)",
+          "password": "Wachtwoord clubsite"
         },
         "data_description": {
           "lookahead_minutes": "Hoe ver de \"binnenkort\"-sensoren vooruitkijken, in minuten (0-480).",
-          "days_ahead": "Aantal dagen na vandaag dat van het bord wordt opgehaald (0-14)."
+          "days_ahead": "Aantal dagen na vandaag dat van het bord wordt opgehaald (0-14).",
+          "membership_number": "Voor bardiensten en clubagenda: inlog van Mijn Club. Leeg laten om uit te zetten.",
+          "password": "Leeg laten om het opgeslagen wachtwoord te houden."
         }
       }
+    },
+    "error": {
+      "invalid_auth": "Bondsnummer of wachtwoord onjuist.",
+      "cannot_connect": "Clubsite niet bereikbaar."
     }
   },
   "entity": {
@@ -61,6 +69,15 @@
       },
       "current_activity_end": {
         "name": "Einde huidige activiteit"
+      },
+      "open_duties_week": {
+        "name": "Open diensten komende 7 dagen"
+      },
+      "next_open_duty": {
+        "name": "Volgende open dienst"
+      },
+      "duties_source": {
+        "name": "Diensten bron"
       }
     },
     "binary_sensor": {
@@ -77,6 +94,12 @@
       },
       "activity": {
         "name": "Activiteit"
+      },
+      "duties": {
+        "name": "Bardiensten"
+      },
+      "club_agenda": {
+        "name": "Clubagenda"
       }
     }
   }

@@ -71,6 +71,7 @@ class BookingCoordinator(DataUpdateCoordinator[BoardData]):
             self.tz,
         )
         self._fetched: dict[date, datetime] = {}
+        self.tasks = None  # TasksCoordinator when member login is configured
         self._cache: dict[date, list[Booking]] = {}
 
     @property

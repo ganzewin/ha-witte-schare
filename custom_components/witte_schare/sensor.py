@@ -134,7 +134,13 @@ async def async_setup_entry(
     entry: WitteSchareConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    async_add_entities(BoardSensor(entry.runtime_data, d) for d in SENSORS)
+    c = entry.runtime_data
+    entities: list = [BoardSensor(c, d) for d in SENSORS]
+    if c.tasks is not None:
+        from .tasks_entity import NextOpenDutySensor, OpenDutiesSensor, SourceSensor
+
+        entities += [OpenDutiesSensor(c.tasks), NextOpenDutySensor(c.tasks), SourceSensor(c.tasks)]
+    async_add_entities(entities)
 
 
 class BoardSensor(WitteSchareEntity, SensorEntity):

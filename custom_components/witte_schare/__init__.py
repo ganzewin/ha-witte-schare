@@ -5,7 +5,9 @@ from __future__ import annotations
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
+from .const import CONF_MEMBERSHIP_NUMBER, CONF_PASSWORD
 from .coordinator import BookingCoordinator, WitteSchareConfigEntry
+from .tasks_coordinator import TasksCoordinator
 
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.CALENDAR, Platform.SENSOR]
 
@@ -13,6 +15,10 @@ PLATFORMS = [Platform.BINARY_SENSOR, Platform.CALENDAR, Platform.SENSOR]
 async def async_setup_entry(hass: HomeAssistant, entry: WitteSchareConfigEntry) -> bool:
     coordinator = BookingCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
+    if entry.options.get(CONF_MEMBERSHIP_NUMBER) and entry.options.get(CONF_PASSWORD):
+        coordinator.tasks = TasksCoordinator(hass, entry)
+        # A login problem must not take the court board down with it.
+        await coordinator.tasks.async_refresh()
     entry.runtime_data = coordinator
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
