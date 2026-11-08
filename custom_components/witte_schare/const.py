@@ -27,6 +27,7 @@ USER_AGENT = "HomeAssistant-WitteSchare/1.0 (+https://github.com/ganzewin/ha-wit
 CONF_MEMBERSHIP_NUMBER = "membership_number"
 CONF_PASSWORD = "password"
 LOGIN_PATH = "/mijn"
+TASKS_PAGE_PATH = "/mijn/Tasks"
 EVENTS_PATH = "/Ajax/Calendar/GetEvents"
 TASKS_UPDATE_INTERVAL = timedelta(minutes=30)
 TASKS_DAYS_AHEAD = 28
