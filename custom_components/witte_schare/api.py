@@ -9,7 +9,7 @@ from typing import Any
 
 import aiohttp
 
-from .const import BOOKINGS_PATH, EVENTS_PATH, LOGIN_PATH, USER_AGENT
+from .const import BOOKINGS_PATH, EVENTS_PATH, LOGIN_PATH, TASKS_PAGE_PATH, USER_AGENT
 from .parser import Booking, ParseError, page_date, parse_bookings
 
 _LOGGER = logging.getLogger(__name__)
@@ -89,12 +89,15 @@ class MemberClient:
         """Post the login form; the site sets a session cookie.
 
         The form has a "login with" choice (bondsnummer or clublidnummer);
-        try the bondsnummer first and fall back to the clublidnummer.
+        try the bondsnummer first and fall back to the clublidnummer. Success
+        is checked on a members-only page, because the response to the form
+        post itself differs per site version.
         """
         url = f"{self._base_url}{LOGIN_PATH}"
+        check_url = f"{self._base_url}{TASKS_PAGE_PATH}"
         timeout = aiohttp.ClientTimeout(total=20)
+        attempts: list[str] = []
         try:
-            # Pick up the session cookies the form expects.
             async with self._session.get(url, headers=self._headers, timeout=timeout) as resp:
                 await resp.read()
             for login_type in ("FedmembershipNumber", "ClubmembershipNumber"):
@@ -105,17 +108,30 @@ class MemberClient:
                         "Login.MembershipNumber": self._number,
                         "Login.Password": self._password,
                     },
-                    headers=self._headers,
+                    headers=self._headers | {"Origin": self._base_url, "Referer": url},
                     timeout=timeout,
                 ) as resp:
                     resp.raise_for_status()
                     page = await resp.text()
-                if _logged_in(page):
+                    post_info = (
+                        f"{login_type}: POST {resp.status} -> {resp.url.path}"
+                        f" (redirects {len(getattr(resp, "history", ()))}, form={'Login.Password' in page},"
+                        f" uitloggen={'Uitloggen' in page})"
+                    )
+                async with self._session.get(
+                    check_url, headers=self._headers, timeout=timeout
+                ) as resp:
+                    check = await resp.text()
+                    check_info = f"check {resp.status} -> {resp.url.path} form={'Login.Password' in check}"
+                cookies = sorted(c.key for c in self._session.cookie_jar)
+                attempts.append(f"{post_info}; {check_info}; cookies={cookies}")
+                if _logged_in(page) or _logged_in(check):
                     self._logged_in = True
                     return
         except (aiohttp.ClientError, TimeoutError) as err:
             raise ClubSiteError(f"Inloggen mislukt: {err}") from err
         self._logged_in = False
+        _LOGGER.warning("Inloggen op %s afgewezen: %s", self._base_url, " | ".join(attempts))
         raise LoginError("Bondsnummer of wachtwoord niet geaccepteerd")
 
     async def _post_events(self, start: date, end: date) -> tuple[int, str, str]:
