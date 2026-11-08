@@ -114,3 +114,26 @@ async def test_login_sends_login_type(hass: HomeAssistant, aioclient_mock) -> No
     method, url, data, _ = next(c for c in aioclient_mock.mock_calls if c[0] == "POST")
     assert data["Login.LoginType"] == "FedmembershipNumber"
     assert data["Login.MembershipNumber"] == "123"
+
+
+async def test_member_client_sends_login_cookie(hass: HomeAssistant, aioclient_mock) -> None:
+    """The login cookie must be sent back on the next requests."""
+    from homeassistant.helpers.aiohttp_client import async_create_clientsession
+    from aiohttp import DummyCookieJar
+    from custom_components.witte_schare.api import MemberClient
+
+    base = "https://www.witteschare.nl"
+    aioclient_mock.get(f"{base}/mijn", text='<input name="Login.Password">',
+                       headers={"Set-Cookie": "_sessionID=s1; path=/; HttpOnly"})
+    aioclient_mock.post(f"{base}/mijn", text="<a href='/mijn/logoff'>Uitloggen</a>",
+                        headers={"Set-Cookie": "0B34A1B7=auth; expires=Fri, 01 Jan 2100 00:00:00 GMT; path=/; secure; HttpOnly"})
+    aioclient_mock.get(f"{base}/mijn/Tasks", text="<div data-source-url='x'></div>",
+                       headers={"Set-Cookie": "old=gone; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/"})
+    aioclient_mock.post(f"{base}/Ajax/Calendar/GetEvents", json=[],
+                        headers={"Content-Type": "application/json"})
+    client = MemberClient(async_create_clientsession(hass, cookie_jar=DummyCookieJar()), base, "1", "x")
+    assert await client.events(date(2026, 11, 8), date(2026, 11, 9)) == []
+    sent = aioclient_mock.mock_calls[-1][3]["Cookie"]
+    assert "_sessionID=s1" in sent and "0B34A1B7=auth" in sent and "old=" not in sent
+    assert client.diagnostics["takenpagina"].startswith("HTTP 200, kalender=True")
+    assert client.diagnostics["cookies_na_inloggen"][0].startswith("0B34A1B7[")
