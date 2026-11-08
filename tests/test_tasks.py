@@ -54,7 +54,6 @@ async def test_setup_with_login(hass: HomeAssistant, aioclient_mock, freezer) ->
     aioclient_mock.get("https://www.witteschare.nl/mijn", text='<input name="Login.Password">')
     aioclient_mock.get("https://www.witteschare.nl/mijn/Tasks", text="<title>Fout</title>", status=500)
     aioclient_mock.post("https://www.witteschare.nl/mijn", text="<html>Uitloggen</html>")
-    aioclient_mock.post("https://www.witteschare.nl/Ajax/Profile/GetTasks", text="<div>Bardienst</div>")
     aioclient_mock.post(
         "https://www.witteschare.nl/Ajax/Calendar/GetEvents",
         json=SAMPLE,
@@ -75,7 +74,6 @@ async def test_setup_with_login(hass: HomeAssistant, aioclient_mock, freezer) ->
     assert hass.states.get("calendar.diensten_bar_duties").attributes["message"] == "Bardienst (open)"
     source = hass.states.get("sensor.diensten_duties_source")
     assert source.state == "3"
-    assert "'Bardienst' 1x" in source.attributes["takenlijst"]
     assert "als browser: HTTP 500" in source.attributes["takenpagina"]
     assert source.attributes["na_inloggen"].startswith("titel=")
 
@@ -137,3 +135,24 @@ async def test_member_client_sends_login_cookie(hass: HomeAssistant, aioclient_m
     assert "_sessionID=s1" in sent and "0B34A1B7=auth" in sent and "old=" not in sent
     assert client.diagnostics["takenpagina"].startswith("HTTP 200, kalender=True")
     assert client.diagnostics["cookies_na_inloggen"][0].startswith("0B34A1B7[")
+
+
+async def test_member_client_relogs_when_only_agenda(hass: HomeAssistant, aioclient_mock) -> None:
+    """An expired session gets only public agenda items; log in again then."""
+    from homeassistant.helpers.aiohttp_client import async_create_clientsession
+    from aiohttp import DummyCookieJar
+    from custom_components.witte_schare.api import MemberClient
+
+    base = "https://www.witteschare.nl"
+    aioclient_mock.get(f"{base}/mijn", text='<input name="Login.Password">')
+    aioclient_mock.post(f"{base}/mijn", text="<a href='/mijn/logoff'>Uitloggen</a>")
+    aioclient_mock.get(f"{base}/mijn/Tasks", text="ok")
+    aioclient_mock.post(f"{base}/Ajax/Calendar/GetEvents", json=[{"type": 3, "title": "Agenda"}],
+                        headers={"Content-Type": "application/json"})
+    client = MemberClient(async_create_clientsession(hass, cookie_jar=DummyCookieJar()), base, "1", "x")
+    await client.events(date(2026, 11, 8), date(2026, 11, 9))
+    logins = sum(1 for c in aioclient_mock.mock_calls if c[0] == "POST" and str(c[1]).endswith("/mijn"))
+    assert logins == 1  # first call logs in, nothing to retry
+    await client.events(date(2026, 11, 8), date(2026, 11, 9))
+    logins = sum(1 for c in aioclient_mock.mock_calls if c[0] == "POST" and str(c[1]).endswith("/mijn"))
+    assert logins == 2  # agenda only on a reused session: log in again
