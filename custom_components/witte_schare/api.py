@@ -10,6 +10,7 @@ import re
 from typing import Any
 
 import aiohttp
+from yarl import URL
 
 from .const import (
     BOOKINGS_PATH,
@@ -85,6 +86,23 @@ def _title(page: str) -> str:
     return " ".join(html.unescape(m.group(1)).split()) if m else ""
 
 
+def _page_outline(page: str) -> str:
+    """Describe a page by its structure only (no names or other content)."""
+    body = page.split("<body", 1)[-1]
+    parts = [f"titel={_title(page)!r}", f"{len(page)} tekens"]
+    heads = [_visible_text(h)[:60] for h in re.findall(r"<h[1-3][^>]*>(.*?)</h[1-3]>", body, re.S | re.I)]
+    parts.append(f"koppen={heads[:6]}")
+    for form in re.findall(r"<form\b[^>]*>.*?</form>", body, re.S | re.I)[:4]:
+        action = re.search(r'action="([^"]*)"', form)
+        names = re.findall(r'name="([^"]+)"', form)
+        parts.append(f"form {action.group(1) if action else '?'} velden={names[:12]}")
+    links = sorted({h for h in re.findall(r'href="(/(?:mijn|me|Ajax|Account|Profile)[^"?#]*)', body, re.I)})
+    parts.append(f"links={links[:20]}")
+    scripts = re.findall(r"(location(?:\.href)?\s*=\s*['\"][^'\"]+|/Ajax/[A-Za-z/]+)", body)
+    parts.append(f"scripts={sorted(set(scripts))[:10]}")
+    return "; ".join(parts)
+
+
 class LoginError(ClubSiteError):
     """Membership number or password rejected."""
 
@@ -121,6 +139,11 @@ class MemberClient:
         url = f"{self._base_url}{LOGIN_PATH}"
         timeout = aiohttp.ClientTimeout(total=20)
         attempts: list[str] = []
+        # Cookies a browser has after accepting the cookie bar and opening
+        # the duties page once.
+        self._session.cookie_jar.update_cookies(
+            {"_acceptCookie": "1", "_calendarViewType": "calendar"}, URL(self._base_url)
+        )
         try:
             async with self._session.get(url, headers=self._headers, timeout=timeout) as resp:
                 await resp.read()
@@ -145,6 +168,7 @@ class MemberClient:
                 cookies = sorted(c.key for c in self._session.cookie_jar)
                 attempts.append(f"{post_info}; cookies={cookies}")
                 if _logged_in(page):
+                    self.diagnostics["na_inloggen"] = _page_outline(page)
                     self._logged_in = True
                     await self._open_tasks_page()
                     return
@@ -224,6 +248,8 @@ class MemberClient:
                 f"HTTP {status}, uitlogknop={'/mijn/logoff' in page.lower()},"
                 f" titel={_title(page)!r}"
             )
+            if status >= 500:
+                self.diagnostics["mijn"] += f"; {_page_outline(page)}"
             lists = []
             for show_all in ("false", "true"):
                 async with self._session.post(
