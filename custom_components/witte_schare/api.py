@@ -9,7 +9,7 @@ from typing import Any
 
 import aiohttp
 
-from .const import BOOKINGS_PATH, EVENTS_PATH, LOGIN_PATH, TASKS_PAGE_PATH, USER_AGENT
+from .const import BOOKINGS_PATH, EVENTS_PATH, LOGIN_PATH, USER_AGENT
 from .parser import Booking, ParseError, page_date, parse_bookings
 
 _LOGGER = logging.getLogger(__name__)
@@ -57,8 +57,12 @@ class ClubSiteClient:
 
 
 def _logged_in(page: str) -> bool:
-    """A logged-in page has a logout link and no login form."""
-    return 'name="Login.Password"' not in page and "Uitloggen" in page
+    """After posting the form, the login form only comes back when rejected.
+
+    The logout link text depends on the site language (Uitloggen/Logout),
+    so it is not required.
+    """
+    return 'name="Login.Password"' not in page
 
 
 class LoginError(ClubSiteError):
@@ -83,18 +87,15 @@ class MemberClient:
 
     @property
     def _headers(self) -> dict[str, str]:
-        return {"User-Agent": USER_AGENT}
+        return {"User-Agent": USER_AGENT, "Accept-Language": "nl-NL,nl;q=0.9"}
 
     async def login(self) -> None:
         """Post the login form; the site sets a session cookie.
 
         The form has a "login with" choice (bondsnummer or clublidnummer);
-        try the bondsnummer first and fall back to the clublidnummer. Success
-        is checked on a members-only page, because the response to the form
-        post itself differs per site version.
+        try the bondsnummer first and fall back to the clublidnummer.
         """
         url = f"{self._base_url}{LOGIN_PATH}"
-        check_url = f"{self._base_url}{TASKS_PAGE_PATH}"
         timeout = aiohttp.ClientTimeout(total=20)
         attempts: list[str] = []
         try:
@@ -118,14 +119,9 @@ class MemberClient:
                         f" (redirects {len(getattr(resp, "history", ()))}, form={'Login.Password' in page},"
                         f" uitloggen={'Uitloggen' in page})"
                     )
-                async with self._session.get(
-                    check_url, headers=self._headers, timeout=timeout
-                ) as resp:
-                    check = await resp.text()
-                    check_info = f"check {resp.status} -> {resp.url.path} form={'Login.Password' in check}"
                 cookies = sorted(c.key for c in self._session.cookie_jar)
-                attempts.append(f"{post_info}; {check_info}; cookies={cookies}")
-                if _logged_in(page) or _logged_in(check):
+                attempts.append(f"{post_info}; cookies={cookies}")
+                if _logged_in(page):
                     self._logged_in = True
                     return
         except (aiohttp.ClientError, TimeoutError) as err:
