@@ -20,7 +20,6 @@ from .const import (
     BROWSER_USER_AGENT,
     EVENTS_PATH,
     LOGIN_PATH,
-    TASKS_LIST_PATH,
     TASKS_PAGE_PATH,
     USER_AGENT,
 )
@@ -306,54 +305,41 @@ class MemberClient:
         )
         return reply.status, reply.content_type, reply.text
 
-    async def probe_task_list(self) -> None:
-        """Record what the member pages return, to see why duties are missing.
-
-        Only status codes, sizes and counts are kept, plus the visible text
-        of a short (empty) list.
-        """
-        try:
-            status, page = await self._get_page(LOGIN_PATH)
-            self.diagnostics["mijn"] = (
-                f"HTTP {status}, uitlogknop={'/mijn/logoff' in page.lower()},"
-                f" titel={_title(page)!r}"
-            )
-            lists = []
-            for show_all in ("false", "true"):
-                reply = await self._send(
-                    "POST",
-                    TASKS_LIST_PATH,
-                    self._ajax_headers("text/html, */*; q=0.01"),
-                    data={"showAllDuties": show_all},
-                )
-                body = reply.text
-                info = (
-                    f"alle={show_all}: HTTP {reply.status}, {len(body)} tekens,"
-                    f" 'Bardienst' {body.count('Bardienst')}x"
-                )
-                if len(body) < 1500:
-                    info += f", tekst={_visible_text(body)[:300]!r}"
-                lists.append(info)
-            self.diagnostics["takenlijst"] = " | ".join(lists)
-        except (aiohttp.ClientError, TimeoutError, ClubSiteError) as err:
-            self.diagnostics["takenlijst"] = f"fout: {err}"
-
     async def events(self, start: date, end: date) -> Any:
-        """Return the raw (decoded JSON) calendar payload, logging in when needed."""
+        """Return the raw (decoded JSON) calendar payload, logging in when needed.
+
+        An expired session is not refused: the site then answers like for a
+        visitor, with only the public club agenda. So when a reply holds no
+        duties at all, log in again once and ask again.
+        """
+        fresh = not self._logged_in
         try:
-            if self._logged_in:
-                await self._open_tasks_page()
-            else:
+            if fresh:
                 await self.login()
-            status, ctype, body = await self._post_events(start, end)
-            if status in (301, 302, 401, 403) or "json" not in ctype:
+            payload = await self._events_once(start, end)
+            if payload is None or (not fresh and not _has_duties(payload)):
                 await self.login()
-                status, ctype, body = await self._post_events(start, end)
+                payload = await self._events_once(start, end)
         except (aiohttp.ClientError, TimeoutError) as err:
             raise ClubSiteError(f"Diensten ophalen mislukt: {err}") from err
+        if payload is None:
+            raise ClubSiteError("Diensten ophalen gaf geen geldig antwoord")
+        return payload
+
+    async def _events_once(self, start: date, end: date) -> Any:
+        """One calendar request; None when the reply looks like a logged-out one."""
+        status, ctype, body = await self._post_events(start, end)
+        if status in (301, 302, 401, 403) or "json" not in ctype:
+            return None
         if status != 200:
             raise ClubSiteError(f"Diensten ophalen gaf HTTP {status}")
         try:
             return json.loads(body)
         except ValueError as err:
             raise ClubSiteError(f"Geen JSON van diensten ({ctype}): {body[:120]!r}") from err
+
+
+def _has_duties(payload: Any) -> bool:
+    """True when the payload holds anything besides public agenda items (type 3)."""
+    items = payload if isinstance(payload, list) else []
+    return any(isinstance(i, dict) and str(i.get("type")) != "3" for i in items)

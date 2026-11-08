@@ -33,6 +33,5 @@ CONF_PASSWORD = "password"
 LOGIN_PATH = "/mijn"
 TASKS_PAGE_PATH = "/mijn/Tasks"
 EVENTS_PATH = "/Ajax/Calendar/GetEvents"
-TASKS_LIST_PATH = "/Ajax/Profile/GetTasks"
 TASKS_UPDATE_INTERVAL = timedelta(minutes=30)
 TASKS_DAYS_AHEAD = 28
