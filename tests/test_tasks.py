@@ -103,7 +103,7 @@ async def test_login_sends_login_type(hass: HomeAssistant, aioclient_mock) -> No
 
     aioclient_mock.get("https://www.witteschare.nl/mijn", text="form")
     aioclient_mock.get("https://www.witteschare.nl/mijn/Tasks", text="<a>Uitloggen</a>")
-    aioclient_mock.post("https://www.witteschare.nl/mijn", text="<a>Uitloggen</a>")
+    aioclient_mock.post("https://www.witteschare.nl/mijn", text="<a>Logout</a>")
     client = MemberClient(async_get_clientsession(hass), "https://www.witteschare.nl", "123", "pw")
     await client.login()
     method, url, data, _ = next(c for c in aioclient_mock.mock_calls if c[0] == "POST")
