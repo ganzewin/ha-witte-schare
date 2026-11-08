@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import date, tzinfo
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, tzinfo
+from email.utils import parsedate_to_datetime
+from http.cookies import CookieError, SimpleCookie
 import html
 import json
 import logging
@@ -107,8 +110,31 @@ class LoginError(ClubSiteError):
     """Membership number or password rejected."""
 
 
+@dataclass(slots=True)
+class _Reply:
+    status: int
+    content_type: str
+    text: str
+
+
+def _cookie_attrs(header: str) -> str:
+    """Describe a Set-Cookie header without its value."""
+    name, _, rest = header.partition("=")
+    attrs = [a.strip().split("=", 1)[0].lower() for a in rest.split(";")[1:] if a.strip()]
+    extra = ""
+    for key in ("path", "domain", "expires", "max-age", "samesite"):
+        if m := re.search(rf";\s*{key}=([^;]*)", header, re.I):
+            extra += f" {key}={m.group(1).strip()}"
+    return f"{name.strip()}[{','.join(attrs)}{extra}]"
+
+
 class MemberClient:
-    """Logged-in access to the member part of the club site."""
+    """Logged-in access to the member part of the club site.
+
+    Cookies are kept here instead of in aiohttp's cookie jar: with the jar
+    the site's login cookie was not sent back on the next request (the page
+    after login showed the member menu, the next one did not).
+    """
 
     def __init__(
         self,
@@ -123,12 +149,69 @@ class MemberClient:
         self._password = password
         self._logged_in = False
         self._browser_ua = False
+        # A browser has these after accepting the cookie bar.
+        self._cookies: dict[str, str] = {"_acceptCookie": "1", "_calendarViewType": "calendar"}
         self.diagnostics: dict[str, Any] = {}
 
     @property
     def _headers(self) -> dict[str, str]:
         agent = BROWSER_USER_AGENT if self._browser_ua else USER_AGENT
         return {"User-Agent": agent, "Accept-Language": "nl-NL,nl;q=0.9"}
+
+    def _store_cookies(self, resp: aiohttp.ClientResponse) -> list[str]:
+        seen = []
+        for header in resp.headers.getall("Set-Cookie", []):
+            seen.append(_cookie_attrs(header))
+            cookie = SimpleCookie()
+            try:
+                cookie.load(header)
+            except CookieError:
+                name, _, rest = header.partition("=")
+                self._cookies[name.strip()] = rest.split(";", 1)[0].strip()
+                continue
+            for name, morsel in cookie.items():
+                expired = morsel["max-age"].strip() in ("0", "-1")
+                if not expired and morsel["expires"]:
+                    try:
+                        expired = parsedate_to_datetime(morsel["expires"]) < datetime.now(UTC)
+                    except (TypeError, ValueError):
+                        expired = False
+                if expired or morsel.value == "":
+                    self._cookies.pop(name, None)
+                else:
+                    self._cookies[name] = morsel.value
+        return seen
+
+    async def _send(
+        self,
+        method: str,
+        path: str,
+        headers: dict[str, str],
+        data: dict[str, str] | None = None,
+        follow: bool = False,
+    ) -> _Reply:
+        """Do one request with our own cookies, optionally following redirects."""
+        url = f"{self._base_url}{path}" if path.startswith("/") else path
+        for _ in range(5):
+            cookie = "; ".join(f"{k}={v}" for k, v in self._cookies.items())
+            async with self._session.request(
+                method,
+                url,
+                data=data,
+                headers=headers | {"Cookie": cookie},
+                timeout=aiohttp.ClientTimeout(total=20),
+                allow_redirects=False,
+            ) as resp:
+                seen = self._store_cookies(resp)
+                if method == "POST" and path == LOGIN_PATH:
+                    self.diagnostics["cookies_na_inloggen"] = seen
+                text = await resp.text()
+                if follow and resp.status in (301, 302, 303, 307) and "Location" in resp.headers:
+                    url = str(resp.url.join(URL(resp.headers["Location"])))
+                    method, data = "GET", None
+                    continue
+                return _Reply(resp.status, resp.headers.get("Content-Type", ""), text)
+        raise ClubSiteError("Te veel doorverwijzingen")
 
     async def login(self) -> None:
         """Post the login form; the site sets a session cookie.
@@ -137,38 +220,29 @@ class MemberClient:
         try the bondsnummer first and fall back to the clublidnummer.
         """
         url = f"{self._base_url}{LOGIN_PATH}"
-        timeout = aiohttp.ClientTimeout(total=20)
         attempts: list[str] = []
-        # Cookies a browser has after accepting the cookie bar and opening
-        # the duties page once.
-        self._session.cookie_jar.update_cookies(
-            {"_acceptCookie": "1", "_calendarViewType": "calendar"}, URL(self._base_url)
-        )
         try:
-            async with self._session.get(url, headers=self._headers, timeout=timeout) as resp:
-                await resp.read()
+            await self._send("GET", LOGIN_PATH, self._headers, follow=True)
             for login_type in ("FedmembershipNumber", "ClubmembershipNumber"):
-                async with self._session.post(
-                    url,
+                reply = await self._send(
+                    "POST",
+                    LOGIN_PATH,
+                    self._headers | {"Origin": self._base_url, "Referer": url},
                     data={
                         "Login.LoginType": login_type,
                         "Login.MembershipNumber": self._number,
                         "Login.Password": self._password,
                     },
-                    headers=self._headers | {"Origin": self._base_url, "Referer": url},
-                    timeout=timeout,
-                ) as resp:
-                    resp.raise_for_status()
-                    page = await resp.text()
-                    post_info = (
-                        f"{login_type}: POST {resp.status} -> {resp.url.path}"
-                        f" (redirects {len(getattr(resp, "history", ()))}, form={'Login.Password' in page},"
-                        f" uitloggen={'Uitloggen' in page})"
-                    )
-                cookies = sorted(c.key for c in self._session.cookie_jar)
-                attempts.append(f"{post_info}; cookies={cookies}")
-                if _logged_in(page):
-                    self.diagnostics["na_inloggen"] = _page_outline(page)
+                    follow=True,
+                )
+                if reply.status >= 400:
+                    raise ClubSiteError(f"Inloggen gaf HTTP {reply.status}")
+                attempts.append(
+                    f"{login_type}: POST {reply.status}, form={'Login.Password' in reply.text};"
+                    f" cookies={sorted(self._cookies)}"
+                )
+                if _logged_in(reply.text):
+                    self.diagnostics["na_inloggen"] = _page_outline(reply.text)
                     self._logged_in = True
                     await self._open_tasks_page()
                     return
@@ -183,24 +257,22 @@ class MemberClient:
         return f"{self._base_url}{TASKS_PAGE_PATH}"
 
     async def _get_page(self, path: str) -> tuple[int, str]:
-        async with self._session.get(
-            f"{self._base_url}{path}",
-            headers=self._headers
+        reply = await self._send(
+            "GET",
+            path,
+            self._headers
             | {
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Referer": f"{self._base_url}{LOGIN_PATH}",
             },
-            timeout=aiohttp.ClientTimeout(total=20),
-            allow_redirects=False,
-        ) as resp:
-            return resp.status, await resp.text()
+        )
+        return reply.status, reply.text
 
     async def _open_tasks_page(self) -> None:
         """Open the duties page like a browser does before its calendar loads.
 
-        The site answered this page with HTTP 500 for the integration while
-        browsers get it fine; retry with a browser user agent and keep that
-        one when it helps.
+        If the site answers with a server error, retry once with a browser
+        user agent and keep that one when it helps.
         """
         try:
             status, page = await self._get_page(TASKS_PAGE_PATH)
@@ -212,7 +284,7 @@ class MemberClient:
                 if status >= 500:
                     self._browser_ua = False
             if status >= 500:
-                info += f"; foutpagina: {_visible_text(page)[:200]!r}"
+                info += f"; {_page_outline(page)}"
             self.diagnostics["takenpagina"] = info
         except (aiohttp.ClientError, TimeoutError) as err:
             self.diagnostics["takenpagina"] = f"fout: {err}"
@@ -226,15 +298,13 @@ class MemberClient:
         }
 
     async def _post_events(self, start: date, end: date) -> tuple[int, str, str]:
-        url = f"{self._base_url}{EVENTS_PATH}"
-        async with self._session.post(
-            url,
+        reply = await self._send(
+            "POST",
+            EVENTS_PATH,
+            self._ajax_headers("application/json, text/javascript, */*; q=0.01"),
             data={"start": start.isoformat(), "end": end.isoformat()},
-            headers=self._ajax_headers("application/json, text/javascript, */*; q=0.01"),
-            timeout=aiohttp.ClientTimeout(total=20),
-            allow_redirects=False,
-        ) as resp:
-            return resp.status, resp.headers.get("Content-Type", ""), await resp.text()
+        )
+        return reply.status, reply.content_type, reply.text
 
     async def probe_task_list(self) -> None:
         """Record what the member pages return, to see why duties are missing.
@@ -248,27 +318,24 @@ class MemberClient:
                 f"HTTP {status}, uitlogknop={'/mijn/logoff' in page.lower()},"
                 f" titel={_title(page)!r}"
             )
-            if status >= 500:
-                self.diagnostics["mijn"] += f"; {_page_outline(page)}"
             lists = []
             for show_all in ("false", "true"):
-                async with self._session.post(
-                    f"{self._base_url}{TASKS_LIST_PATH}",
+                reply = await self._send(
+                    "POST",
+                    TASKS_LIST_PATH,
+                    self._ajax_headers("text/html, */*; q=0.01"),
                     data={"showAllDuties": show_all},
-                    headers=self._ajax_headers("text/html, */*; q=0.01"),
-                    timeout=aiohttp.ClientTimeout(total=20),
-                    allow_redirects=False,
-                ) as resp:
-                    body = await resp.text()
+                )
+                body = reply.text
                 info = (
-                    f"alle={show_all}: HTTP {resp.status}, {len(body)} tekens,"
+                    f"alle={show_all}: HTTP {reply.status}, {len(body)} tekens,"
                     f" 'Bardienst' {body.count('Bardienst')}x"
                 )
                 if len(body) < 1500:
                     info += f", tekst={_visible_text(body)[:300]!r}"
                 lists.append(info)
             self.diagnostics["takenlijst"] = " | ".join(lists)
-        except (aiohttp.ClientError, TimeoutError) as err:
+        except (aiohttp.ClientError, TimeoutError, ClubSiteError) as err:
             self.diagnostics["takenlijst"] = f"fout: {err}"
 
     async def events(self, start: date, end: date) -> Any:

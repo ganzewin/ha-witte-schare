@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlparse
 
-from aiohttp import CookieJar
+from aiohttp import DummyCookieJar
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
@@ -95,7 +95,7 @@ class WitteSchareOptionsFlow(OptionsFlow):
                 password = options.get(CONF_PASSWORD, "")
             if number and password:
                 client = MemberClient(
-                    async_create_clientsession(self.hass, cookie_jar=CookieJar()),
+                    async_create_clientsession(self.hass, cookie_jar=DummyCookieJar()),
                     self.config_entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL),
                     number,
                     password,

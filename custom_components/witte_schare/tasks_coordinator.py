@@ -6,7 +6,7 @@ from datetime import timedelta
 import logging
 from typing import Any
 
-from aiohttp import CookieJar
+from aiohttp import DummyCookieJar
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
@@ -55,7 +55,7 @@ class TasksCoordinator(DataUpdateCoordinator[list[ClubEvent]]):
             update_interval=TASKS_UPDATE_INTERVAL,
         )
         self.tz = dt_util.get_time_zone(CLUB_TIMEZONE)
-        session = async_create_clientsession(hass, cookie_jar=CookieJar())
+        session = async_create_clientsession(hass, cookie_jar=DummyCookieJar())
         self.client = MemberClient(
             session,
             entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL),
