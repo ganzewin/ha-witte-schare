@@ -20,7 +20,12 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     c = entry.runtime_data
-    async_add_entities([BookingsCalendar(c), ActivityCalendar(c)])
+    entities: list = [BookingsCalendar(c), ActivityCalendar(c)]
+    if c.tasks is not None:
+        from .tasks_entity import ClubCalendar
+
+        entities += [ClubCalendar(c.tasks, True), ClubCalendar(c.tasks, False)]
+    async_add_entities(entities)
 
 
 def _booking_event(b: Booking) -> CalendarEvent:

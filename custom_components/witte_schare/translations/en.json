@@ -21,13 +21,21 @@
       "init": {
         "data": {
           "lookahead_minutes": "Lookahead (minutes)",
-          "days_ahead": "Days to fetch ahead"
+          "days_ahead": "Days to fetch ahead",
+          "membership_number": "Membership number (optional)",
+          "password": "Club site password"
         },
         "data_description": {
           "lookahead_minutes": "How far ahead \"upcoming\" sensors look, in minutes (0-480).",
-          "days_ahead": "Number of days after today to fetch from the board (0-14)."
+          "days_ahead": "Number of days after today to fetch from the board (0-14).",
+          "membership_number": "For bar duties and club agenda: your Mijn Club login. Leave empty to disable.",
+          "password": "Leave empty to keep the stored password."
         }
       }
+    },
+    "error": {
+      "invalid_auth": "Invalid membership number or password.",
+      "cannot_connect": "Cannot reach the club site."
     }
   },
   "entity": {
@@ -61,6 +69,15 @@
       },
       "current_activity_end": {
         "name": "Current activity end"
+      },
+      "open_duties_week": {
+        "name": "Open duties next 7 days"
+      },
+      "next_open_duty": {
+        "name": "Next open duty"
+      },
+      "duties_source": {
+        "name": "Duties source"
       }
     },
     "binary_sensor": {
@@ -77,6 +94,12 @@
       },
       "activity": {
         "name": "Activity"
+      },
+      "duties": {
+        "name": "Bar duties"
+      },
+      "club_agenda": {
+        "name": "Club agenda"
       }
     }
   }

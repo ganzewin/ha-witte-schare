@@ -23,3 +23,10 @@ CACHE_TTL = timedelta(hours=6)
 MAX_CALENDAR_DAYS = 42
 
 USER_AGENT = "HomeAssistant-WitteSchare/1.0 (+https://github.com/ganzewin/ha-witte-schare)"
+
+CONF_MEMBERSHIP_NUMBER = "membership_number"
+CONF_PASSWORD = "password"
+LOGIN_PATH = "/mijn"
+EVENTS_PATH = "/Ajax/Calendar/GetEvents"
+TASKS_UPDATE_INTERVAL = timedelta(minutes=30)
+TASKS_DAYS_AHEAD = 28
