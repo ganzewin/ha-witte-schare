@@ -54,6 +54,7 @@ async def test_setup_with_login(hass: HomeAssistant, aioclient_mock, freezer) ->
     aioclient_mock.get("https://www.witteschare.nl/mijn", text='<input name="Login.Password">')
     aioclient_mock.get("https://www.witteschare.nl/mijn/Tasks", text="<html>Uitloggen</html>")
     aioclient_mock.post("https://www.witteschare.nl/mijn", text="<html>Uitloggen</html>")
+    aioclient_mock.post("https://www.witteschare.nl/Ajax/Profile/GetTasks", text="<div>Bardienst</div>")
     aioclient_mock.post(
         "https://www.witteschare.nl/Ajax/Calendar/GetEvents",
         json=SAMPLE,
@@ -72,7 +73,10 @@ async def test_setup_with_login(hass: HomeAssistant, aioclient_mock, freezer) ->
         print(eid, s.state, dict(s.attributes))
     assert hass.states.get("sensor.diensten_open_duties_next_7_days").state == "1"
     assert hass.states.get("calendar.diensten_bar_duties").attributes["message"] == "Bardienst (open)"
-    assert hass.states.get("sensor.diensten_duties_source").state == "3"
+    source = hass.states.get("sensor.diensten_duties_source")
+    assert source.state == "3"
+    assert source.attributes["takenlijst"].endswith("'Bardienst' 1x")
+    assert source.attributes["takenpagina"].startswith("HTTP 200")
 
 
 async def test_login_rejected_keeps_board(hass: HomeAssistant, aioclient_mock, freezer) -> None:

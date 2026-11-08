@@ -77,6 +77,7 @@ class TasksCoordinator(DataUpdateCoordinator[list[ClubEvent]]):
         except ClubSiteError as err:
             raise UpdateFailed(str(err)) from err
 
+        await self.client.probe_task_list()
         items = payload if isinstance(payload, list) else payload
         self.raw_sample = _redact(items)
         if isinstance(items, list) and items and isinstance(items[0], dict):

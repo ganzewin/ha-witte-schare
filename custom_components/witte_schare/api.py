@@ -9,7 +9,14 @@ from typing import Any
 
 import aiohttp
 
-from .const import BOOKINGS_PATH, EVENTS_PATH, LOGIN_PATH, USER_AGENT
+from .const import (
+    BOOKINGS_PATH,
+    EVENTS_PATH,
+    LOGIN_PATH,
+    TASKS_LIST_PATH,
+    TASKS_PAGE_PATH,
+    USER_AGENT,
+)
 from .parser import Booking, ParseError, page_date, parse_bookings
 
 _LOGGER = logging.getLogger(__name__)
@@ -84,6 +91,7 @@ class MemberClient:
         self._number = membership_number
         self._password = password
         self._logged_in = False
+        self.diagnostics: dict[str, Any] = {}
 
     @property
     def _headers(self) -> dict[str, str]:
@@ -123,6 +131,7 @@ class MemberClient:
                 attempts.append(f"{post_info}; cookies={cookies}")
                 if _logged_in(page):
                     self._logged_in = True
+                    await self._open_tasks_page()
                     return
         except (aiohttp.ClientError, TimeoutError) as err:
             raise ClubSiteError(f"Inloggen mislukt: {err}") from err
@@ -130,21 +139,76 @@ class MemberClient:
         _LOGGER.warning("Inloggen op %s afgewezen: %s", self._base_url, " | ".join(attempts))
         raise LoginError("Bondsnummer of wachtwoord niet geaccepteerd")
 
+    @property
+    def _tasks_page(self) -> str:
+        return f"{self._base_url}{TASKS_PAGE_PATH}"
+
+    async def _open_tasks_page(self) -> None:
+        """Open the duties page like a browser does before its calendar loads.
+
+        The calendar endpoint is shared with the club agenda; the site seems
+        to pick which items to return from the page that was opened last.
+        """
+        try:
+            async with self._session.get(
+                self._tasks_page,
+                headers=self._headers
+                | {
+                    "Accept": "text/html,application/xhtml+xml",
+                    "Referer": f"{self._base_url}{LOGIN_PATH}",
+                },
+                timeout=aiohttp.ClientTimeout(total=20),
+            ) as resp:
+                page = await resp.text()
+                self.diagnostics["takenpagina"] = (
+                    f"HTTP {resp.status}, kalender={'data-source-url' in page}"
+                )
+        except (aiohttp.ClientError, TimeoutError) as err:
+            self.diagnostics["takenpagina"] = f"fout: {err}"
+
+    def _ajax_headers(self, accept: str) -> dict[str, str]:
+        return self._headers | {
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": accept,
+            "Origin": self._base_url,
+            "Referer": self._tasks_page,
+        }
+
     async def _post_events(self, start: date, end: date) -> tuple[int, str, str]:
         url = f"{self._base_url}{EVENTS_PATH}"
         async with self._session.post(
             url,
             data={"start": start.isoformat(), "end": end.isoformat()},
-            headers=self._headers | {"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+            headers=self._ajax_headers("application/json, text/javascript, */*; q=0.01"),
             timeout=aiohttp.ClientTimeout(total=20),
             allow_redirects=False,
         ) as resp:
             return resp.status, resp.headers.get("Content-Type", ""), await resp.text()
 
+    async def probe_task_list(self) -> None:
+        """Record (without content) what the duties list view returns."""
+        try:
+            async with self._session.post(
+                f"{self._base_url}{TASKS_LIST_PATH}",
+                data={"showAllDuties": "true"},
+                headers=self._ajax_headers("text/html, */*; q=0.01"),
+                timeout=aiohttp.ClientTimeout(total=20),
+                allow_redirects=False,
+            ) as resp:
+                body = await resp.text()
+                self.diagnostics["takenlijst"] = (
+                    f"HTTP {resp.status}, {len(body)} tekens,"
+                    f" 'Bardienst' {body.count('Bardienst')}x"
+                )
+        except (aiohttp.ClientError, TimeoutError) as err:
+            self.diagnostics["takenlijst"] = f"fout: {err}"
+
     async def events(self, start: date, end: date) -> Any:
         """Return the raw (decoded JSON) calendar payload, logging in when needed."""
         try:
-            if not self._logged_in:
+            if self._logged_in:
+                await self._open_tasks_page()
+            else:
                 await self.login()
             status, ctype, body = await self._post_events(start, end)
             if status in (301, 302, 401, 403) or "json" not in ctype:

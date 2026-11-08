@@ -127,4 +127,5 @@ class SourceSensor(TasksEntity, SensorEntity):
             "ruw_aantal": c.raw_count,
             "ruw_voorbeeld": c.raw_sample,
             "indeling": statuses,
+            **c.client.diagnostics,
         }
