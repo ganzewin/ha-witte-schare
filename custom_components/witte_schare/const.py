@@ -22,6 +22,10 @@ FUTURE_REFRESH = timedelta(hours=1)
 CACHE_TTL = timedelta(hours=6)
 MAX_CALENDAR_DAYS = 42
 
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15"
+    " (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
+)
 USER_AGENT = "HomeAssistant-WitteSchare/1.0 (+https://github.com/ganzewin/ha-witte-schare)"
 
 CONF_MEMBERSHIP_NUMBER = "membership_number"
