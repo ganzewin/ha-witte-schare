@@ -52,7 +52,7 @@ async def test_setup_with_login(hass: HomeAssistant, aioclient_mock, freezer) ->
     empty = (Path(__file__).parent / "fixtures" / "bookings_empty.html").read_text()
     aioclient_mock.get(re.compile(r".*/courtbooking-overview/GetBookings.*"), text=empty.replace('value="7-11-2026', 'value="x'))
     aioclient_mock.get("https://www.witteschare.nl/mijn", text='<input name="Login.Password">')
-    aioclient_mock.get("https://www.witteschare.nl/mijn/Tasks", text="<html>Uitloggen</html>")
+    aioclient_mock.get("https://www.witteschare.nl/mijn/Tasks", text="<title>Fout</title>", status=500)
     aioclient_mock.post("https://www.witteschare.nl/mijn", text="<html>Uitloggen</html>")
     aioclient_mock.post("https://www.witteschare.nl/Ajax/Profile/GetTasks", text="<div>Bardienst</div>")
     aioclient_mock.post(
@@ -75,8 +75,8 @@ async def test_setup_with_login(hass: HomeAssistant, aioclient_mock, freezer) ->
     assert hass.states.get("calendar.diensten_bar_duties").attributes["message"] == "Bardienst (open)"
     source = hass.states.get("sensor.diensten_duties_source")
     assert source.state == "3"
-    assert source.attributes["takenlijst"].endswith("'Bardienst' 1x")
-    assert source.attributes["takenpagina"].startswith("HTTP 200")
+    assert "'Bardienst' 1x" in source.attributes["takenlijst"]
+    assert "als browser: HTTP 500" in source.attributes["takenpagina"]
 
 
 async def test_login_rejected_keeps_board(hass: HomeAssistant, aioclient_mock, freezer) -> None:

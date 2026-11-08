@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from datetime import date, tzinfo
+import html
 import json
 import logging
+import re
 from typing import Any
 
 import aiohttp
 
 from .const import (
     BOOKINGS_PATH,
+    BROWSER_USER_AGENT,
     EVENTS_PATH,
     LOGIN_PATH,
     TASKS_LIST_PATH,
@@ -72,6 +75,16 @@ def _logged_in(page: str) -> bool:
     return 'name="Login.Password"' not in page
 
 
+def _visible_text(page: str) -> str:
+    page = re.sub(r"<(script|style)\b.*?</\1>", " ", page, flags=re.S | re.I)
+    return " ".join(html.unescape(re.sub(r"<[^>]+>", " ", page)).split())
+
+
+def _title(page: str) -> str:
+    m = re.search(r"<title>(.*?)</title>", page, re.S | re.I)
+    return " ".join(html.unescape(m.group(1)).split()) if m else ""
+
+
 class LoginError(ClubSiteError):
     """Membership number or password rejected."""
 
@@ -91,11 +104,13 @@ class MemberClient:
         self._number = membership_number
         self._password = password
         self._logged_in = False
+        self._browser_ua = False
         self.diagnostics: dict[str, Any] = {}
 
     @property
     def _headers(self) -> dict[str, str]:
-        return {"User-Agent": USER_AGENT, "Accept-Language": "nl-NL,nl;q=0.9"}
+        agent = BROWSER_USER_AGENT if self._browser_ua else USER_AGENT
+        return {"User-Agent": agent, "Accept-Language": "nl-NL,nl;q=0.9"}
 
     async def login(self) -> None:
         """Post the login form; the site sets a session cookie.
@@ -143,26 +158,38 @@ class MemberClient:
     def _tasks_page(self) -> str:
         return f"{self._base_url}{TASKS_PAGE_PATH}"
 
+    async def _get_page(self, path: str) -> tuple[int, str]:
+        async with self._session.get(
+            f"{self._base_url}{path}",
+            headers=self._headers
+            | {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Referer": f"{self._base_url}{LOGIN_PATH}",
+            },
+            timeout=aiohttp.ClientTimeout(total=20),
+            allow_redirects=False,
+        ) as resp:
+            return resp.status, await resp.text()
+
     async def _open_tasks_page(self) -> None:
         """Open the duties page like a browser does before its calendar loads.
 
-        The calendar endpoint is shared with the club agenda; the site seems
-        to pick which items to return from the page that was opened last.
+        The site answered this page with HTTP 500 for the integration while
+        browsers get it fine; retry with a browser user agent and keep that
+        one when it helps.
         """
         try:
-            async with self._session.get(
-                self._tasks_page,
-                headers=self._headers
-                | {
-                    "Accept": "text/html,application/xhtml+xml",
-                    "Referer": f"{self._base_url}{LOGIN_PATH}",
-                },
-                timeout=aiohttp.ClientTimeout(total=20),
-            ) as resp:
-                page = await resp.text()
-                self.diagnostics["takenpagina"] = (
-                    f"HTTP {resp.status}, kalender={'data-source-url' in page}"
-                )
+            status, page = await self._get_page(TASKS_PAGE_PATH)
+            info = f"HTTP {status}, kalender={'data-source-url' in page}"
+            if status >= 500 and not self._browser_ua:
+                self._browser_ua = True
+                status, page = await self._get_page(TASKS_PAGE_PATH)
+                info += f"; als browser: HTTP {status}, kalender={'data-source-url' in page}"
+                if status >= 500:
+                    self._browser_ua = False
+            if status >= 500:
+                info += f"; foutpagina: {_visible_text(page)[:200]!r}"
+            self.diagnostics["takenpagina"] = info
         except (aiohttp.ClientError, TimeoutError) as err:
             self.diagnostics["takenpagina"] = f"fout: {err}"
 
@@ -186,20 +213,35 @@ class MemberClient:
             return resp.status, resp.headers.get("Content-Type", ""), await resp.text()
 
     async def probe_task_list(self) -> None:
-        """Record (without content) what the duties list view returns."""
+        """Record what the member pages return, to see why duties are missing.
+
+        Only status codes, sizes and counts are kept, plus the visible text
+        of a short (empty) list.
+        """
         try:
-            async with self._session.post(
-                f"{self._base_url}{TASKS_LIST_PATH}",
-                data={"showAllDuties": "true"},
-                headers=self._ajax_headers("text/html, */*; q=0.01"),
-                timeout=aiohttp.ClientTimeout(total=20),
-                allow_redirects=False,
-            ) as resp:
-                body = await resp.text()
-                self.diagnostics["takenlijst"] = (
-                    f"HTTP {resp.status}, {len(body)} tekens,"
+            status, page = await self._get_page(LOGIN_PATH)
+            self.diagnostics["mijn"] = (
+                f"HTTP {status}, uitlogknop={'/mijn/logoff' in page.lower()},"
+                f" titel={_title(page)!r}"
+            )
+            lists = []
+            for show_all in ("false", "true"):
+                async with self._session.post(
+                    f"{self._base_url}{TASKS_LIST_PATH}",
+                    data={"showAllDuties": show_all},
+                    headers=self._ajax_headers("text/html, */*; q=0.01"),
+                    timeout=aiohttp.ClientTimeout(total=20),
+                    allow_redirects=False,
+                ) as resp:
+                    body = await resp.text()
+                info = (
+                    f"alle={show_all}: HTTP {resp.status}, {len(body)} tekens,"
                     f" 'Bardienst' {body.count('Bardienst')}x"
                 )
+                if len(body) < 1500:
+                    info += f", tekst={_visible_text(body)[:300]!r}"
+                lists.append(info)
+            self.diagnostics["takenlijst"] = " | ".join(lists)
         except (aiohttp.ClientError, TimeoutError) as err:
             self.diagnostics["takenlijst"] = f"fout: {err}"
 
