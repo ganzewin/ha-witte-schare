@@ -77,6 +77,7 @@ async def test_setup_with_login(hass: HomeAssistant, aioclient_mock, freezer) ->
     assert source.state == "3"
     assert "'Bardienst' 1x" in source.attributes["takenlijst"]
     assert "als browser: HTTP 500" in source.attributes["takenpagina"]
+    assert source.attributes["na_inloggen"].startswith("titel=")
 
 
 async def test_login_rejected_keeps_board(hass: HomeAssistant, aioclient_mock, freezer) -> None:
